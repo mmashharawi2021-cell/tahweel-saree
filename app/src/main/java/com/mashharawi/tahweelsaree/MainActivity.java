@@ -12,6 +12,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.ContactsContract;
 import android.text.InputType;
 import android.text.method.PasswordTransformationMethod;
@@ -40,17 +42,17 @@ public class MainActivity extends Activity {
     private static final String KEY_PIN = "jawwal_pin";
     private static final String KEY_LOCK = "app_lock";
 
-    private static final int BG = Color.parseColor("#07182A");
-    private static final int CARD = Color.parseColor("#16253A");
-    private static final int CARD_SOFT = Color.parseColor("#1D2E46");
     private static final int TEXT = Color.WHITE;
-    private static final int MUTED = Color.parseColor("#B8CCD8");
-    private static final int TEAL = Color.parseColor("#14D4C8");
-    private static final int BLUE = Color.parseColor("#2E6BFF");
-    private static final int BORDER = Color.parseColor("#2A4964");
+    private static final int MUTED = Color.parseColor("#C6D5E0");
+    private static final int SOFT_TEXT = Color.parseColor("#9EB2C1");
+    private static final int DARK = Color.parseColor("#07182A");
 
     private String wallet = "jawwal";
     private String pendingCode = "";
+    private String draftPhone = "";
+    private String draftAmount = "";
+    private String draftPin = "";
+
     private EditText pinInput;
     private EditText phoneInput;
     private EditText amountInput;
@@ -66,11 +68,80 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        if (!prefs.getString(KEY_LOCK, "").isEmpty()) {
-            showLockScreen();
-        } else {
-            showMainScreen();
-        }
+        showSplashScreen();
+    }
+
+    private void showSplashScreen() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        root.setPadding(dp(24), dp(24), dp(24), dp(24));
+        root.setBackground(gradientBackground());
+
+        LinearLayout splashCard = new LinearLayout(this);
+        splashCard.setOrientation(LinearLayout.VERTICAL);
+        splashCard.setGravity(Gravity.CENTER);
+        splashCard.setPadding(dp(28), dp(30), dp(28), dp(30));
+        splashCard.setBackground(strokeBackground(cardColor(), borderColor(), 28));
+
+        TextView logoMark = new TextView(this);
+        logoMark.setText("⇄");
+        logoMark.setTextColor(primaryColor());
+        logoMark.setTextSize(56);
+        logoMark.setTypeface(Typeface.DEFAULT_BOLD);
+        logoMark.setGravity(Gravity.CENTER);
+
+        TextView appName = new TextView(this);
+        appName.setText("تحويل سريع");
+        appName.setTextColor(TEXT);
+        appName.setTextSize(30);
+        appName.setTypeface(Typeface.DEFAULT_BOLD);
+        appName.setGravity(Gravity.CENTER);
+
+        TextView owner = new TextView(this);
+        owner.setText("مهند المشهراوي");
+        owner.setTextColor(secondaryColor());
+        owner.setTextSize(22);
+        owner.setTypeface(Typeface.DEFAULT_BOLD);
+        owner.setGravity(Gravity.CENTER);
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("GIS Engineer | Android App Developer");
+        subtitle.setTextColor(MUTED);
+        subtitle.setTextSize(13);
+        subtitle.setGravity(Gravity.CENTER);
+
+        TextView loading = new TextView(this);
+        loading.setText("جاري التحميل...");
+        loading.setTextColor(SOFT_TEXT);
+        loading.setTextSize(14);
+        loading.setGravity(Gravity.CENTER);
+
+        splashCard.addView(logoMark);
+        splashCard.addView(space(8));
+        splashCard.addView(appName);
+        splashCard.addView(space(6));
+        splashCard.addView(owner);
+        splashCard.addView(space(8));
+        splashCard.addView(subtitle);
+        splashCard.addView(space(16));
+        splashCard.addView(loading);
+        root.addView(splashCard);
+
+        splashCard.setAlpha(0f);
+        splashCard.setScaleX(0.94f);
+        splashCard.setScaleY(0.94f);
+        splashCard.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(550).start();
+        setContentView(root);
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!prefs.getString(KEY_LOCK, "").isEmpty()) {
+                showLockScreen();
+            } else {
+                showMainScreen(draftPhone, draftAmount, draftPin);
+            }
+        }, 1500);
     }
 
     private void showLockScreen() {
@@ -80,15 +151,19 @@ public class MainActivity extends Activity {
 
         LinearLayout lockCard = card();
         lockCard.addView(sectionTitle("فتح التطبيق"));
+        lockCard.addView(helperText("أدخل رمز الدخول السريع للمتابعة."));
+        lockCard.addView(space(12));
+
         EditText input = field("رمز الدخول السريع", true);
         Button enter = primaryButton("دخول");
         enter.setOnClickListener(v -> {
             if (prefs.getString(KEY_LOCK, "").equals(input.getText().toString().trim())) {
-                showMainScreen();
+                showMainScreen(draftPhone, draftAmount, draftPin);
             } else {
                 toast("رمز غير صحيح");
             }
         });
+
         lockCard.addView(input);
         lockCard.addView(space(12));
         lockCard.addView(enter);
@@ -96,7 +171,7 @@ public class MainActivity extends Activity {
         setContentView(wrap(root));
     }
 
-    private void showMainScreen() {
+    private void showMainScreen(String phoneValue, String amountValue, String pinValue) {
         LinearLayout root = baseLayout();
         root.addView(headerCard());
         root.addView(walletSwitcherCard());
@@ -115,22 +190,36 @@ public class MainActivity extends Activity {
         root.addView(sectionLabel("عن التطبيق"));
         root.addView(aboutCard());
 
-        renderForm();
+        renderForm(phoneValue, amountValue, pinValue);
         renderFavorites();
         renderHistory();
         setContentView(wrap(root));
     }
 
+    private void switchWallet(String nextWallet) {
+        if (phoneInput != null) draftPhone = phoneInput.getText().toString();
+        if (amountInput != null) draftAmount = amountInput.getText().toString();
+        if (pinInput != null) draftPin = pinInput.getText().toString();
+        wallet = nextWallet;
+        showMainScreen(draftPhone, draftAmount, draftPin);
+    }
+
     private View headerCard() {
         LinearLayout header = card();
         header.setGravity(Gravity.CENTER_HORIZONTAL);
-        header.setPadding(dp(20), dp(22), dp(20), dp(22));
+        header.setPadding(dp(22), dp(22), dp(22), dp(22));
+
+        LinearLayout iconWrap = new LinearLayout(this);
+        iconWrap.setGravity(Gravity.CENTER);
+        iconWrap.setPadding(dp(18), dp(10), dp(18), dp(10));
+        iconWrap.setBackground(strokeBackground(innerCardColor(), borderColor(), 22));
 
         TextView logo = new TextView(this);
         logo.setText("⇄");
-        logo.setTextSize(42);
-        logo.setTextColor(TEAL);
-        logo.setGravity(Gravity.CENTER);
+        logo.setTextSize(38);
+        logo.setTextColor(primaryColor());
+        logo.setTypeface(Typeface.DEFAULT_BOLD);
+        iconWrap.addView(logo);
 
         TextView title = new TextView(this);
         title.setText("تحويل سريع");
@@ -140,13 +229,13 @@ public class MainActivity extends Activity {
         title.setGravity(Gravity.CENTER);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("تحويل سريع منظم وواضح لمحافظ USSD بدون زحمة واجهة.");
+        subtitle.setText("اختر المحفظة، أدخل البيانات، راجعها، ثم نفّذ التحويل بأوضح شكل ممكن.");
         subtitle.setTextColor(MUTED);
         subtitle.setTextSize(14);
         subtitle.setGravity(Gravity.CENTER);
 
-        header.addView(logo);
-        header.addView(space(8));
+        header.addView(iconWrap);
+        header.addView(space(10));
         header.addView(title);
         header.addView(space(6));
         header.addView(subtitle);
@@ -156,7 +245,7 @@ public class MainActivity extends Activity {
     private View walletSwitcherCard() {
         LinearLayout box = card();
         box.addView(sectionTitle("اختر المحفظة"));
-        box.addView(helperText("عند تبديل المحفظة تظهر الحقول المطلوبة فقط مع انتقال ناعم."));
+        box.addView(helperText("عند الضغط على المحفظة يتغير لون التطبيق بالكامل ليتناسق معها."));
         box.addView(space(12));
 
         LinearLayout row = new LinearLayout(this);
@@ -165,16 +254,8 @@ public class MainActivity extends Activity {
         jawwalButton = switchButton("جوال باي");
         palpayButton = switchButton("بال باي");
 
-        jawwalButton.setOnClickListener(v -> {
-            wallet = "jawwal";
-            updateWalletButtons();
-            renderForm();
-        });
-        palpayButton.setOnClickListener(v -> {
-            wallet = "palpay";
-            updateWalletButtons();
-            renderForm();
-        });
+        jawwalButton.setOnClickListener(v -> switchWallet("jawwal"));
+        palpayButton.setOnClickListener(v -> switchWallet("palpay"));
 
         row.addView(jawwalButton, weighted());
         row.addView(palpayButton, weighted());
@@ -188,34 +269,56 @@ public class MainActivity extends Activity {
         styleSwitch(palpayButton, "palpay".equals(wallet));
     }
 
-    private void renderForm() {
+    private void renderForm(String phoneValue, String amountValue, String pinValue) {
         formContainer.removeAllViews();
         formContainer.setAlpha(0f);
         formContainer.setTranslationY(dp(18));
 
         formContainer.addView(sectionTitle("بيانات التحويل"));
-        formContainer.addView(helperText("أدخل البيانات ثم راجعها في شاشة التأكيد قبل التنفيذ."));
-        formContainer.addView(space(12));
+        formContainer.addView(helperText("استغلال أفضل للمساحة، تقليل الزرار، وإظهار العناصر المهمة فقط."));
+        formContainer.addView(space(14));
 
         if ("jawwal".equals(wallet)) {
             pinInput = field("PIN جوال باي", true);
-            pinInput.setText(prefs.getString(KEY_PIN, ""));
+            pinInput.setText(pinValue == null || pinValue.isEmpty() ? prefs.getString(KEY_PIN, "") : pinValue);
             savePinCheck = new CheckBox(this);
             savePinCheck.setText("حفظ PIN محليًا لهذا الجهاز");
             savePinCheck.setTextColor(MUTED);
             formContainer.addView(pinInput);
-            formContainer.addView(space(6));
+            formContainer.addView(space(8));
             formContainer.addView(savePinCheck);
-            formContainer.addView(space(10));
+            formContainer.addView(space(12));
+        } else {
+            pinInput = null;
+            savePinCheck = null;
         }
 
+        LinearLayout phoneRow = new LinearLayout(this);
+        phoneRow.setOrientation(LinearLayout.HORIZONTAL);
         phoneInput = field("رقم المستلم", false);
         phoneInput.setInputType(InputType.TYPE_CLASS_PHONE);
+        phoneInput.setText(phoneValue == null ? "" : phoneValue);
+
+        Button pickContactButton = iconButton("👤");
+        pickContactButton.setOnClickListener(v -> pickContact());
+        LinearLayout.LayoutParams phoneParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        phoneParams.setMargins(0, 0, dp(8), 0);
+        phoneRow.addView(phoneInput, phoneParams);
+        phoneRow.addView(pickContactButton, new LinearLayout.LayoutParams(dp(56), dp(56)));
+
         amountInput = field("المبلغ", false);
         amountInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+        amountInput.setText(amountValue == null ? "" : amountValue);
 
-        Button pickContactButton = softButton("اختيار من جهات الاتصال");
-        pickContactButton.setOnClickListener(v -> pickContact());
+        formContainer.addView(phoneRow);
+        formContainer.addView(space(12));
+        formContainer.addView(amountInput);
+        formContainer.addView(space(12));
+        formContainer.addView(quickAmountsCard());
+        formContainer.addView(space(14));
+
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
 
         Button addFavoriteButton = softButton("إضافة للمفضلة");
         addFavoriteButton.setOnClickListener(v -> addFavorite());
@@ -223,22 +326,13 @@ public class MainActivity extends Activity {
         Button confirmButton = primaryButton("تأكيد التحويل");
         confirmButton.setOnClickListener(v -> confirmTransfer());
 
-        Button openMenuButton = softButton("فتح القائمة الأصلية");
-        openMenuButton.setOnClickListener(v -> callCode("jawwal".equals(wallet) ? "*110#" : "*370#"));
+        LinearLayout.LayoutParams small = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f);
+        small.setMargins(0, 0, dp(8), 0);
+        LinearLayout.LayoutParams large = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f);
 
-        formContainer.addView(phoneInput);
-        formContainer.addView(space(10));
-        formContainer.addView(pickContactButton);
-        formContainer.addView(space(10));
-        formContainer.addView(amountInput);
-        formContainer.addView(space(12));
-        formContainer.addView(quickAmountsCard());
-        formContainer.addView(space(12));
-        formContainer.addView(addFavoriteButton);
-        formContainer.addView(space(10));
-        formContainer.addView(confirmButton);
-        formContainer.addView(space(10));
-        formContainer.addView(openMenuButton);
+        actionRow.addView(addFavoriteButton, small);
+        actionRow.addView(confirmButton, large);
+        formContainer.addView(actionRow);
 
         formContainer.animate().alpha(1f).translationY(0f).setDuration(260).start();
     }
@@ -267,7 +361,7 @@ public class MainActivity extends Activity {
     private void confirmTransfer() {
         String phone = clean(phoneInput.getText().toString());
         String amount = amountInput.getText().toString().trim();
-        String pin = "jawwal".equals(wallet) ? pinInput.getText().toString().trim() : "";
+        String pin = "jawwal".equals(wallet) && pinInput != null ? pinInput.getText().toString().trim() : "";
 
         if (!phone.matches("05[69][0-9]{7}")) {
             toast("رقم غير صحيح");
@@ -438,7 +532,7 @@ public class MainActivity extends Activity {
             if (item.trim().isEmpty()) continue;
             TextView line = helperText(item);
             line.setPadding(dp(10), dp(10), dp(10), dp(10));
-            line.setBackground(strokeBackground(CARD_SOFT, BORDER, 14));
+            line.setBackground(strokeBackground(innerCardColor(), borderColor(), 14));
             historyContainer.addView(line);
             historyContainer.addView(space(8));
             count++;
@@ -451,14 +545,15 @@ public class MainActivity extends Activity {
         about.addView(helperText("Developed by Mohanad Al-Mashharawi\nGIS Engineer | Android App Developer\nPhone/WhatsApp: 0599876261\nEmail: mmashharawi2021@gmail.com"));
         about.addView(space(12));
 
-        Button whatsappButton = softButton("تواصل واتساب");
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button whatsappButton = softButton("واتساب");
         whatsappButton.setOnClickListener(v -> openUrl("https://wa.me/970599876261"));
-        Button lockButton = softButton("إعداد رمز دخول سريع");
+        Button lockButton = softButton("رمز الدخول");
         lockButton.setOnClickListener(v -> setQuickLock());
-
-        about.addView(whatsappButton);
-        about.addView(space(10));
-        about.addView(lockButton);
+        row.addView(whatsappButton, weighted());
+        row.addView(lockButton, weighted());
+        about.addView(row);
         return about;
     }
 
@@ -487,7 +582,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(16), dp(16), dp(16), dp(28));
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        root.setBackgroundColor(BG);
+        root.setBackground(gradientBackground());
         return root;
     }
 
@@ -506,7 +601,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.bottomMargin = dp(14);
         box.setLayoutParams(params);
-        box.setBackground(strokeBackground(CARD, BORDER, 22));
+        box.setBackground(strokeBackground(cardColor(), borderColor(), 22));
         return box;
     }
 
@@ -514,7 +609,7 @@ public class MainActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(12), dp(12), dp(12), dp(12));
-        box.setBackground(strokeBackground(CARD_SOFT, BORDER, 18));
+        box.setBackground(strokeBackground(innerCardColor(), borderColor(), 18));
         return box;
     }
 
@@ -548,11 +643,11 @@ public class MainActivity extends Activity {
     private EditText field(String hint, boolean password) {
         EditText editText = new EditText(this);
         editText.setHint(hint);
-        editText.setHintTextColor(Color.parseColor("#8EA7B6"));
+        editText.setHintTextColor(SOFT_TEXT);
         editText.setTextColor(TEXT);
         editText.setTextSize(15);
-        editText.setPadding(dp(14), dp(14), dp(14), dp(14));
-        editText.setBackground(strokeBackground(CARD_SOFT, BORDER, 16));
+        editText.setPadding(dp(14), dp(15), dp(14), dp(15));
+        editText.setBackground(strokeBackground(innerCardColor(), borderColor(), 16));
         if (password) {
             editText.setTransformationMethod(PasswordTransformationMethod.getInstance());
         }
@@ -567,7 +662,7 @@ public class MainActivity extends Activity {
         button.setTextSize(15);
         button.setTypeface(Typeface.DEFAULT_BOLD);
         button.setPadding(dp(16), dp(14), dp(16), dp(14));
-        button.setBackground(strokeBackground(TEAL, TEAL, 18));
+        button.setBackground(gradientButton(primaryColor(), secondaryColor(), 18));
         return button;
     }
 
@@ -577,7 +672,17 @@ public class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setTextColor(TEXT);
         button.setTextSize(14);
-        button.setBackground(strokeBackground(CARD_SOFT, BORDER, 16));
+        button.setBackground(strokeBackground(innerCardColor(), borderColor(), 16));
+        return button;
+    }
+
+    private Button iconButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setAllCaps(false);
+        button.setTextSize(18);
+        button.setTextColor(TEXT);
+        button.setBackground(gradientButton(primaryColor(), secondaryColor(), 18));
         return button;
     }
 
@@ -587,7 +692,7 @@ public class MainActivity extends Activity {
         button.setAllCaps(false);
         button.setTextColor(TEXT);
         button.setTextSize(13);
-        button.setBackground(strokeBackground(BLUE, BLUE, 100));
+        button.setBackground(strokeBackground(primaryColor(), primaryColor(), 100));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.setMargins(0, 0, dp(8), 0);
         button.setLayoutParams(params);
@@ -606,8 +711,10 @@ public class MainActivity extends Activity {
     private void styleSwitch(Button button, boolean selected) {
         if (button == null) return;
         button.setTextColor(TEXT);
-        button.setBackground(strokeBackground(selected ? BLUE : CARD_SOFT, selected ? BLUE : BORDER, 18));
-        button.animate().scaleX(selected ? 1.02f : 1f).scaleY(selected ? 1.02f : 1f).setDuration(160).start();
+        button.setBackground(selected
+                ? gradientButton(primaryColor(), secondaryColor(), 18)
+                : strokeBackground(innerCardColor(), borderColor(), 18));
+        button.animate().scaleX(selected ? 1.03f : 1f).scaleY(selected ? 1.03f : 1f).setDuration(160).start();
     }
 
     private LinearLayout.LayoutParams weighted() {
@@ -622,6 +729,38 @@ public class MainActivity extends Activity {
         drawable.setCornerRadius(dp(radiusDp));
         drawable.setStroke(dp(1), stroke);
         return drawable;
+    }
+
+    private GradientDrawable gradientButton(int start, int end, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{start, end});
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
+    }
+
+    private GradientDrawable gradientBackground() {
+        int start = "jawwal".equals(wallet) ? Color.parseColor("#071A16") : Color.parseColor("#0A1532");
+        int end = DARK;
+        return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{start, end});
+    }
+
+    private int primaryColor() {
+        return "jawwal".equals(wallet) ? Color.parseColor("#16A34A") : Color.parseColor("#2563EB");
+    }
+
+    private int secondaryColor() {
+        return "jawwal".equals(wallet) ? Color.parseColor("#14D4C8") : Color.parseColor("#F59E0B");
+    }
+
+    private int cardColor() {
+        return "jawwal".equals(wallet) ? Color.parseColor("#11261F") : Color.parseColor("#14233F");
+    }
+
+    private int innerCardColor() {
+        return "jawwal".equals(wallet) ? Color.parseColor("#16332A") : Color.parseColor("#1B2D4E");
+    }
+
+    private int borderColor() {
+        return "jawwal".equals(wallet) ? Color.parseColor("#1E5A47") : Color.parseColor("#294E7B");
     }
 
     private View space(int dp) {
